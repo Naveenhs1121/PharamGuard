@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PharmaGuard — Pharmacogenomic Risk Intelligence</title>
+    <meta name="description"
+        content="PharmaGuard analyses your genetic VCF file to predict drug interaction risks based on CPIC pharmacogenomic guidelines." />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* ─── Obsidian Palette ─────────────────────────── */
+        :root {
+            --obs-void: #0d0d0f;
+            /* deepest bg */
+            --obs-base: #13131a;
+            /* main bg */
+            --obs-surface: #1a1a24;
+            /* card bg */
+            --obs-raised: #1f1f2e;
+            /* elevated */
+            --obs-overlay: #252535;
+            /* hover states */
+            --obs-border: rgba(139, 120, 255, 0.10);
+            --obs-line: rgba(255, 255, 255, 0.06);
+
+            --obs-purple: #7c3aed;
+            /* primary accent */
+            --obs-violet: #8b5cf6;
+            --obs-lavender: #a78bfa;
+            --obs-accent: #c4b5fd;
+            /* light purple text accent */
+
+            --obs-text: #e2e0f0;
+            --obs-muted: #7a7890;
+            --obs-dim: #3f3d50;
+
+            /* risk colours — earthy tones fit obsidian */
+            --safe: #34d399;
+            --safe-bg: rgba(52, 211, 153, 0.10);
+            --warn: #fbbf24;
+            --warn-bg: rgba(251, 191, 36, 0.10);
+            --toxic: #f87171;
+            --toxic-bg: rgba(248, 113, 113, 0.10);
+            --ineff: #a78bfa;
+            --ineff-bg: rgba(167, 139, 250, 0.10);
+            --unknown: #6b7280;
+            --unknown-bg: rgba(107, 114, 128, 0.08);
+
+            --radius: 14px;
+            --radius-sm: 8px;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--obs-base);
+            color: var(--obs-text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ─── Subtle noise texture overlay ─── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
+        /* ─── Glow orbs ─── */
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .orb-1 {
+            width: 500px;
+            height: 500px;
+            top: -150px;
+            left: -100px;
+            background: rgba(124, 58, 237, 0.08);
+        }
+
+        .orb-2 {
+            width: 400px;
+            height: 400px;
+            bottom: -100px;
+            right: -80px;
+            background: rgba(139, 92, 246, 0.06);
+        }
+
+        /* ─── Nav ─── */
+        nav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 2rem;
+            height: 60px;
+            background: rgba(13, 13, 15, 0.80);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--obs-line);
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--obs-text);
+            letter-spacing: -0.3px;
+        }
+
+        .logo-gem {
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(135deg, var(--obs-purple), var(--obs-violet));
+            border-radius: 7px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            box-shadow: 0 0 16px rgba(124, 58, 237, 0.4);
+        }
+
+        .nav-pill {
+            font-size: 0.68rem;
+            font-weight: 700;
+            color: var(--obs-lavender);
+            background: rgba(124, 58, 237, 0.12);
+            border: 1px solid rgba(124, 58, 237, 0.25);
+            padding: 3px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+
+        /* ─── Hero ─── */
+        .hero {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            padding: 72px 2rem 56px;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--obs-lavender);
+            background: rgba(124, 58, 237, 0.10);
+            border: 1px solid rgba(124, 58, 237, 0.20);
+            padding: 5px 14px;
+            border-radius: 20px;
+            margin-bottom: 28px;
+            letter-spacing: 0.6px;
+        }
+
+        .hero h1 {
+            font-size: clamp(2rem, 5vw, 3.4rem);
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -1.5px;
+            margin-bottom: 18px;
+            color: var(--obs-text);
+        }
+
+        .hero h1 em {
+            font-style: normal;
+            background: linear-gradient(135deg, var(--obs-violet) 0%, var(--obs-accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1rem;
+            color: var(--obs-muted);
+            max-width: 540px;
+            margin: 0 auto 48px;
+            line-height: 1.75;
+        }
+
+        /* ─── Stat chips ─── */
+        .stats {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 0;
+        }
+
+        .stat-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--obs-surface);
+            border: 1px solid var(--obs-border);
+            border-radius: 10px;
+            padding: 8px 16px;
+        }
+
+        .stat-num {
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--obs-lavender);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stat-lbl {
+            font-size: 0.75rem;
+            color: var(--obs-muted);
+            font-weight: 500;
+        }
+
+        /* ─── Container ─── */
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 48px 1.5rem 80px;
+        }
+
+        /* ─── Card ─── */
+        .card {
+            background: var(--obs-surface);
+            border: 1px solid var(--obs-border);
+            border-radius: var(--radius);
+            padding: 28px 32px;
+            margin-bottom: 20px;
+        }
+
+        .card-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--obs-lavender);
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ─── Upload zone ─── */
+        .upload-zone {
+            border: 1.5px dashed var(--obs-dim);
+            border-radius: var(--radius);
+            padding: 44px 32px;
+            text-align: center;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.2s ease;
+        }
+
+        .upload-zone:hover,
+        .upload-zone.drag-over {
+            border-color: var(--obs-violet);
+            background: rgba(124, 58, 237, 0.04);
+        }
+
+        .upload-zone input {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+
+        .upload-icon {
+            width: 52px;
+            height: 52px;
+            background: linear-gradient(135deg, rgba(124, 58, 237, 0.2), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(124, 58, 237, 0.2);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin: 0 auto 16px;
+        }
+
+        .upload-zone h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--obs-text);
+            margin-bottom: 6px;
+        }
+
+        .upload-zone p {
+            font-size: 0.82rem;
+            color: var(--obs-muted);
+        }
+
+        .file-pill {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            margin-top: 16px;
+            background: var(--obs-raised);
+            border: 1px solid var(--obs-border);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+        }
+
+        .file-pill.show {
+            display: flex;
+        }
+
+        .file-pill-icon {
+            font-size: 20px;
+        }
+
+        .file-pill-name {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--obs-text);
+        }
+
+        .file-pill-size {
+            font-size: 0.72rem;
+            color: var(--obs-muted);
+        }
+
+        /* ─── Drug chips ─── */
+        .drug-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 9px;
+        }
+
+        .drug-chip input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .drug-chip {
+            position: relative;
+        }
+
+        .drug-chip label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: var(--obs-raised);
+            border: 1px solid var(--obs-line);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 0.83rem;
+            font-weight: 500;
+            color: var(--obs-muted);
+            transition: all 0.18s;
+            user-select: none;
+        }
+
+        .drug-chip label:hover {
+            border-color: var(--obs-dim);
+            color: var(--obs-text);
+        }
+
+        .drug-chip input:checked+label {
+            background: rgba(124, 58, 237, 0.12);
+            border-color: rgba(124, 58, 237, 0.35);
+            color: var(--obs-text);
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--obs-dim);
+            flex-shrink: 0;
+            transition: background 0.18s;
+        }
+
+        .drug-chip input:checked+label .dot {
+            background: var(--obs-violet);
+            box-shadow: 0 0 6px rgba(139, 92, 246, 0.5);
+        }
+
+        /* ─── Analyse button ─── */
+        .btn-run {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, var(--obs-purple), var(--obs-violet));
+            color: #fff;
+            font-size: 0.95rem;
+            font-weight: 700;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            letter-spacing: 0.3px;
+            transition: all 0.22s;
+            box-shadow: 0 4px 24px rgba(124, 58, 237, 0.25);
+        }
+
+        .btn-run:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 36px rgba(124, 58, 237, 0.38);
+        }
+
+        .btn-run:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ─── Loading ─── */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 52px 0;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 2.5px solid var(--obs-raised);
+            border-top-color: var(--obs-violet);
+            border-radius: 50%;
+            animation: spin 0.75s linear infinite;
+            margin: 0 auto 14px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading p {
+            font-size: 0.85rem;
+            color: var(--obs-muted);
+        }
+
+        /* ─── Error ─── */
+        .error-box {
+            display: none;
+            padding: 14px 18px;
+            background: rgba(248, 113, 113, 0.07);
+            border: 1px solid rgba(248, 113, 113, 0.2);
+            border-radius: var(--radius-sm);
+            color: #fca5a5;
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+        }
+
+        .error-box.show {
+            display: block;
+        }
+
+        /* ─── Results ─── */
+        #results {
+            display: none;
+        }
+
+        #results.show {
+            display: block;
+        }
+
+        .results-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 22px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .results-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--obs-text);
+        }
+
+        .results-ts {
+            font-size: 0.72rem;
+            color: var(--obs-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ─── Drug report card ─── */
+        .rpt-card {
+            background: var(--obs-surface);
+            border: 1px solid var(--obs-border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 16px;
+        }
+
+        .rpt-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 22px;
+            cursor: pointer;
+            border-bottom: 1px solid transparent;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .rpt-head:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .rpt-card.open .rpt-head {
+            border-bottom-color: var(--obs-line);
+        }
+
+        .rpt-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .drug-ico {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, rgba(124, 58, 237, 0.2), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(124, 58, 237, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .drug-label {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--obs-text);
+            text-transform: capitalize;
+        }
+
+        .drug-sub {
+            font-size: 0.73rem;
+            color: var(--obs-muted);
+            margin-top: 2px;
+        }
+
+        .rpt-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* risk badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 13px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .badge.safe {
+            background: var(--safe-bg);
+            color: var(--safe);
+            border: 1px solid rgba(52, 211, 153, 0.2);
+        }
+
+        .badge.adjust {
+            background: var(--warn-bg);
+            color: var(--warn);
+            border: 1px solid rgba(251, 191, 36, 0.2);
+        }
+
+        .badge.toxic {
+            background: var(--toxic-bg);
+            color: var(--toxic);
+            border: 1px solid rgba(248, 113, 113, 0.2);
+        }
+
+        .badge.ineff {
+            background: var(--ineff-bg);
+            color: var(--ineff);
+            border: 1px solid rgba(167, 139, 250, 0.2);
+        }
+
+        .badge.unknown {
+            background: var(--unknown-bg);
+            color: var(--unknown);
+            border: 1px solid rgba(107, 114, 128, 0.15);
+        }
+
+        .chev {
+            color: var(--obs-dim);
+            font-size: 1rem;
+            transition: transform 0.22s;
+        }
+
+        .rpt-card.open .chev {
+            transform: rotate(180deg);
+        }
+
+        /* ─── Card body ─── */
+        .rpt-body {
+            display: none;
+            padding: 22px;
+        }
+
+        .rpt-card.open .rpt-body {
+            display: block;
+        }
+
+        /* info grid */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 11px;
+            margin-bottom: 20px;
+        }
+
+        .info-box {
+            background: var(--obs-raised);
+            border: 1px solid var(--obs-line);
+            border-radius: var(--radius-sm);
+            padding: 13px 15px;
+        }
+
+        .i-lbl {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: .8px;
+            text-transform: uppercase;
+            color: var(--obs-muted);
+            margin-bottom: 5px;
+        }
+
+        .i-val {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--obs-text);
+        }
+
+        .conf-track {
+            height: 3px;
+            background: var(--obs-overlay);
+            border-radius: 2px;
+            margin-top: 7px;
+            overflow: hidden;
+        }
+
+        .conf-fill {
+            height: 100%;
+            border-radius: 2px;
+            background: linear-gradient(90deg, var(--obs-purple), var(--obs-violet));
+            transition: width 1s ease;
+        }
+
+        /* clinical recommendation */
+        .rec-box {
+            background: var(--obs-raised);
+            border: 1px solid var(--obs-line);
+            border-left: 3px solid var(--obs-violet);
+            border-radius: var(--radius-sm);
+            padding: 15px 18px;
+            margin-bottom: 18px;
+        }
+
+        .rec-lbl {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: .8px;
+            text-transform: uppercase;
+            color: var(--obs-lavender);
+            margin-bottom: 7px;
+        }
+
+        .rec-box p {
+            font-size: 0.84rem;
+            color: var(--obs-text);
+            line-height: 1.72;
+        }
+
+        /* AI explanation */
+        .ai-box {
+            background: linear-gradient(135deg, rgba(124, 58, 237, 0.06), rgba(139, 92, 246, 0.03));
+            border: 1px solid rgba(124, 58, 237, 0.12);
+            border-left: 3px solid var(--obs-purple);
+            border-radius: var(--radius-sm);
+            padding: 15px 18px;
+            margin-bottom: 18px;
+        }
+
+        .ai-lbl {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: .8px;
+            text-transform: uppercase;
+            color: var(--obs-accent);
+            margin-bottom: 7px;
+        }
+
+        .ai-box p {
+            font-size: 0.84rem;
+            color: var(--obs-text);
+            line-height: 1.72;
+        }
+
+        /* variant chips */
+        .var-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+            margin-top: 6px;
+        }
+
+        .var-chip {
+            font-size: 0.72rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--obs-lavender);
+            background: rgba(124, 58, 237, 0.1);
+            border: 1px solid rgba(124, 58, 237, 0.18);
+            border-radius: 5px;
+            padding: 3px 9px;
+        }
+
+        /* cpic note */
+        .cpic-note {
+            font-size: 0.73rem;
+            color: var(--obs-muted);
+            margin-top: 8px;
+            font-style: italic;
+        }
+
+        /* ─── Genomic summary ─── */
+        .gene-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+            gap: 13px;
+        }
+
+        .gene-card {
+            background: var(--obs-raised);
+            border: 1px solid var(--obs-line);
+            border-radius: var(--radius);
+            padding: 18px;
+        }
+
+        .gene-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .gene-name {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--obs-text);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .phen-tag {
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 5px;
+            background: rgba(124, 58, 237, 0.12);
+            color: var(--obs-lavender);
+            border: 1px solid rgba(124, 58, 237, 0.18);
+        }
+
+        .g-row {
+            font-size: 0.76rem;
+            color: var(--obs-muted);
+            margin-bottom: 4px;
+        }
+
+        .g-row span {
+            color: var(--obs-text);
+            font-weight: 600;
+        }
+
+        /* ─── Quality metrics ─── */
+        .q-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 11px;
+        }
+
+        .q-box {
+            background: var(--obs-raised);
+            border: 1px solid var(--obs-line);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            text-align: center;
+        }
+
+        .q-num {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--obs-lavender);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .q-lbl {
+            font-size: 0.7rem;
+            color: var(--obs-muted);
+            margin-top: 4px;
+        }
+
+        /* ─── Section divider ─── */
+        .section-head {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--obs-lavender);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 32px 0 16px;
+        }
+
+        .section-head::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--obs-line);
+        }
+
+        /* ─── Footer ─── */
+        footer {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            padding: 28px 2rem;
+            border-top: 1px solid var(--obs-line);
+            color: var(--obs-dim);
+            font-size: 0.74rem;
+        }
+
+        footer a {
+            color: var(--obs-lavender);
+            text-decoration: none;
+        }
+
+        /* ─── Animations ─── */
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(14px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .fade-up {
+            animation: fadeUp 0.35s ease both;
+        }
+
+        @media(max-width:600px) {
+            nav {
+                padding: 0 1rem;
+            }
+
+            .hero {
+                padding: 48px 1rem 36px;
+            }
+
+            .card {
+                padding: 20px;
+            }
+
+            .rpt-head {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Glow orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+
+    <!-- ── Nav ── -->
+    <nav>
+        <div class="nav-logo">
+            <div class="logo-gem">🧬</div>
+            PharmaGuard
+        </div>
+        <span class="nav-pill">CPIC · PGx</span>
+    </nav>
+
+    <!-- ── Hero ── -->
+    <section class="hero">
+        <div class="hero-badge">🔬 Pharmacogenomic Risk Intelligence</div>
+        <h1>Know Your Genes.<br /><em>Know Your Risks.</em></h1>
+        <p>Upload a VCF genomic file and instantly predict drug interaction risks based on your unique genetic profile,
+            aligned with CPIC clinical guidelines.</p>
+        <div class="stats">
+            <div class="stat-chip"><span class="stat-num">6</span><span class="stat-lbl">Genes</span></div>
+            <div class="stat-chip"><span class="stat-num">6</span><span class="stat-lbl">Drugs</span></div>
+            <div class="stat-chip"><span class="stat-num">CPIC</span><span class="stat-lbl">Guidelines</span></div>
+            <div class="stat-chip"><span class="stat-num">AI</span><span class="stat-lbl">Explanations</span></div>
+        </div>
+    </section>
+
+    <!-- ── Main ── -->
+    <main class="container">
+
+        <!-- Upload -->
+        <div class="card">
+            <div class="card-label">📂 Step 1 — Upload VCF File</div>
+            <div class="upload-zone" id="upload-zone">
+                <input type="file" id="vcf-file" accept=".vcf" />
+                <div class="upload-icon">📄</div>
+                <h3>Drop your VCF file here</h3>
+                <p>or click to browse &nbsp;·&nbsp; .vcf format &nbsp;·&nbsp; Max 5 MB</p>
+            </div>
+            <div class="file-pill" id="file-pill">
+                <span class="file-pill-icon">🧬</span>
+                <div>
+                    <div class="file-pill-name" id="fpname">—</div>
+                    <div class="file-pill-size" id="fpsize">—</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Drug selector -->
+        <div class="card">
+            <div class="card-label">💊 Step 2 — Select Drugs to Analyse</div>
+            <div class="drug-grid">
+                <div class="drug-chip"><input type="checkbox" id="d-codeine" value="codeine" checked /><label
+                        for="d-codeine"><span class="dot"></span>Codeine</label></div>
+                <div class="drug-chip"><input type="checkbox" id="d-warfarin" value="warfarin" checked /><label
+                        for="d-warfarin"><span class="dot"></span>Warfarin</label></div>
+                <div class="drug-chip"><input type="checkbox" id="d-clopidogrel" value="clopidogrel" checked /><label
+                        for="d-clopidogrel"><span class="dot"></span>Clopidogrel</label></div>
+                <div class="drug-chip"><input type="checkbox" id="d-simvastatin" value="simvastatin" checked /><label
+                        for="d-simvastatin"><span class="dot"></span>Simvastatin</label></div>
+                <div class="drug-chip"><input type="checkbox" id="d-azathioprine" value="azathioprine" checked /><label
+                        for="d-azathioprine"><span class="dot"></span>Azathioprine</label></div>
+                <div class="drug-chip"><input type="checkbox" id="d-fluorouracil" value="fluorouracil" checked /><label
+                        for="d-fluorouracil"><span class="dot"></span>Fluorouracil</label></div>
+            </div>
+        </div>
+
+        <!-- Analyse -->
+        <button class="btn-run" id="btn-run" onclick="runAnalysis()">
+            🔍 &nbsp; Analyse Pharmacogenomic Risk
+        </button>
+
+        <!-- Error -->
+        <div class="error-box" id="err"></div>
+
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Analysing genomic variants…</p>
+        </div>
+
+        <!-- Results -->
+        <div id="results">
+
+            <div class="section-head">📋 Analysis Report</div>
+            <div class="results-head">
+                <div class="results-title">Drug Risk Overview</div>
+                <div class="results-ts" id="rts"></div>
+            </div>
+            <div id="drug-reports"></div>
+
+            <div class="section-head">🧬 Genomic Summary</div>
+            <div class="gene-grid" id="gene-grid"></div>
+
+            <div class="section-head">📊 Quality Metrics</div>
+            <div class="q-grid" id="q-grid"></div>
+
+        </div>
+    </main>
+
+    <footer>
+        PharmaGuard &nbsp;·&nbsp; <a href="https://cpicpgx.org" target="_blank">CPIC Guidelines</a> &nbsp;·&nbsp; For
+        research use only
+    </footer>
+
+    <script>
+        // ── File ──
+        const fileInput = document.getElementById('vcf-file');
+        fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+
+        const zone = document.getElementById('upload-zone');
+        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+        zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+        zone.addEventListener('drop', e => {
+            e.preventDefault(); zone.classList.remove('drag-over');
+            const f = e.dataTransfer.files[0];
+            if (f?.name.endsWith('.vcf')) {
+                const dt = new DataTransfer(); dt.items.add(f); fileInput.files = dt.files; setFile(f);
+            }
+        });
+
+        function setFile(f) {
+            if (!f) return;
+            document.getElementById('fpname').textContent = f.name;
+            document.getElementById('fpsize').textContent = (f.size / 1024).toFixed(1) + ' KB';
+            document.getElementById('file-pill').classList.add('show');
+        }
+
+        // ── Helpers ──
+        const riskCls = l => ({ 'Safe': 'safe', 'Adjust Dosage': 'adjust', 'Toxic': 'toxic', 'Ineffective': 'ineff', 'Unknown': 'unknown' }[l] || 'unknown');
+        const riskIcon = l => ({ 'Safe': '✅', 'Adjust Dosage': '⚠️', 'Toxic': '🚨', 'Ineffective': '⛔', 'Unknown': '❓' }[l] || '❓');
+        const drugIco = n => ({ codeine: '💊', warfarin: '🩸', clopidogrel: '❤️', simvastatin: '🫀', azathioprine: '🛡️', fluorouracil: '⚗️' }[n.toLowerCase()] || '💊');
+
+        function toggleCard(id) { document.getElementById(id).classList.toggle('open'); }
+
+        // ── Analyse ──
+        async function runAnalysis() {
+            const file = fileInput.files[0];
+            if (!file) { showErr('Please select a VCF file first.'); return; }
+            const drugs = [...document.querySelectorAll('.drug-chip input:checked')].map(i => i.value);
+            if (!drugs.length) { showErr('Please select at least one drug.'); return; }
+
+            clearErr();
+            setLoading(true);
+            document.getElementById('results').classList.remove('show');
+            document.getElementById('btn-run').disabled = true;
+
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('drugs', drugs.join(','));
+
+            try {
+                const r = await fetch('http://localhost:8000/analyze/multi', { method: 'POST', body: fd });
+                if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Server error' })); throw new Error(e.detail || `HTTP ${r.status}`); }
+                render(await r.json());
+            } catch (e) {
+                showErr('Error: ' + e.message);
+            } finally {
+                setLoading(false);
+                document.getElementById('btn-run').disabled = false;
+            }
+        }
+
+        function setLoading(on) { document.getElementById('loading').classList.toggle('show', on); }
+        function showErr(m) { const el = document.getElementById('err'); el.textContent = '⚠️ ' + m; el.classList.add('show'); }
+        function clearErr() { document.getElementById('err').classList.remove('show'); }
+
+        // ── Render ──
+        function render(data) {
+            document.getElementById('rts').textContent =
+                `Patient: ${data.patient_id}  ·  ${new Date(data.timestamp).toLocaleString()}`;
+
+            // Drug reports
+            const rEl = document.getElementById('drug-reports');
+            rEl.innerHTML = '';
+            (data.drug_reports || []).forEach((r, i) => {
+                const cls = riskCls(r.risk_assessment.risk_label);
+                const conf = Math.round((r.risk_assessment.confidence_score || 0) * 100);
+                const id = `rc-${i}`;
+                const vars = r.pharmacogenomic_profile.detected_variants;
+                const varHtml = vars.length
+                    ? vars.map(v => `<span class="var-chip">${v}</span>`).join('')
+                    : `<span style="color:var(--obs-muted);font-size:.8rem">No pathogenic variants detected</span>`;
+                const aiHtml = r.llm_explanation
+                    ? `<div class="ai-box"><div class="ai-lbl">🤖 AI Clinical Explanation</div><p>${r.llm_explanation}</p></div>` : '';
+
+                rEl.insertAdjacentHTML('beforeend', `
+        <div class="rpt-card fade-up ${i === 0 ? 'open' : ''}" id="${id}" style="animation-delay:${i * 0.07}s">
+          <div class="rpt-head" onclick="toggleCard('${id}')">
+            <div class="rpt-left">
+              <div class="drug-ico">${drugIco(r.drug)}</div>
+              <div>
+                <div class="drug-label">${r.drug}</div>
+                <div class="drug-sub">Gene: ${r.pharmacogenomic_profile.gene} · ${r.pharmacogenomic_profile.phenotype}</div>
+              </div>
+            </div>
+            <div class="rpt-right">
+              <span class="badge ${cls}">${riskIcon(r.risk_assessment.risk_label)} ${r.risk_assessment.risk_label}</span>
+              <span class="chev">⌄</span>
+            </div>
+          </div>
+          <div class="rpt-body">
+            <div class="info-grid">
+              <div class="info-box"><div class="i-lbl">Phenotype</div><div class="i-val">${r.pharmacogenomic_profile.phenotype}</div></div>
+              <div class="info-box"><div class="i-lbl">Diplotype</div><div class="i-val" style="font-family:'JetBrains Mono',monospace;font-size:.82rem">${r.pharmacogenomic_profile.diplotype}</div></div>
+              <div class="info-box"><div class="i-lbl">Severity</div><div class="i-val" style="text-transform:capitalize">${r.risk_assessment.severity}</div></div>
+              <div class="info-box">
+                <div class="i-lbl">Confidence</div>
+                <div class="i-val">${conf}%</div>
+                <div class="conf-track"><div class="conf-fill" style="width:${conf}%"></div></div>
+              </div>
+              <div class="info-box"><div class="i-lbl">Evidence</div><div class="i-val" style="text-transform:capitalize">${r.risk_assessment.evidence_strength}</div></div>
+              <div class="info-box"><div class="i-lbl">Activity Score</div><div class="i-val" style="font-family:'JetBrains Mono',monospace">${r.pharmacogenomic_profile.activity_score ?? 'N/A'}</div></div>
+            </div>
+            <div class="rec-box">
+              <div class="rec-lbl">⚕️ Clinical Recommendation</div>
+              <p>${r.clinical_recommendation.action}</p>
+            </div>
+            ${aiHtml}
+            <div style="margin-bottom:12px">
+              <div class="i-lbl" style="margin-bottom:8px">🔬 Detected Variants</div>
+              <div class="var-row">${varHtml}</div>
+            </div>
+            <p class="cpic-note">${r.clinical_recommendation.cpic_guideline}</p>
+          </div>
+        </div>`);
+            });
+
+            // Genomic summary
+            const gEl = document.getElementById('gene-grid');
+            gEl.innerHTML = '';
+            Object.entries(data.genomic_summary || {}).forEach(([gene, info]) => {
+                gEl.insertAdjacentHTML('beforeend', `
+        <div class="gene-card fade-up">
+          <div class="gene-top">
+            <div class="gene-name">${gene}</div>
+            <div class="phen-tag">${info.phenotype}</div>
+          </div>
+          <div class="g-row">Diplotype: <span>${info.diplotype}</span></div>
+          <div class="g-row">Activity: <span>${info.activity_score}</span></div>
+          <div class="g-row">Variants: <span>${info.detected_rsids.length ? info.detected_rsids.join(', ') : 'None'}</span></div>
+        </div>`);
+            });
+
+            // Quality metrics
+            const qm = data.quality_metrics || {};
+            document.getElementById('q-grid').innerHTML = `
+      <div class="q-box"><div class="q-num">${qm.total_variants_found ?? 0}</div><div class="q-lbl">Total Variants</div></div>
+      <div class="q-box"><div class="q-num">${qm.annotated_variants ?? 0}</div><div class="q-lbl">Annotated</div></div>
+      <div class="q-box"><div class="q-num">${qm.vcf_parsing_success ? '✓' : '✗'}</div><div class="q-lbl">VCF Parsed</div></div>
+      <div class="q-box"><div class="q-num">${(data.drug_reports || []).length}</div><div class="q-lbl">Drugs Analysed</div></div>`;
+
+            const r = document.getElementById('results');
+            r.classList.add('show');
+            r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    </script>
+
+</body>
+
+</html>

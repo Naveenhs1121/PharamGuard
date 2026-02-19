@@ -1,6 +1,6 @@
 """
 PharmaGuard — LLM Explanation Engine
-Generates clinical explanations using Google Gemini (primary)
+Generates clinical explanations using OpenAI (primary)
 with a structured template fallback if LLM is unavailable.
 """
 
@@ -11,34 +11,33 @@ from typing import Dict, List, Any, Optional
 logger = logging.getLogger("PharmaGuard.ExplanationEngine")
 
 # ---------------------------------------------------------------------------
-# LLM setup — Gemini
+# LLM setup — OpenAI
 # ---------------------------------------------------------------------------
-_gemini_model = None
+_openai_client = None
 
-def _get_gemini_model():
-    """Lazy-initialise Gemini model (only once)."""
-    global _gemini_model
-    if _gemini_model is not None:
-        return _gemini_model
+def _get_openai_client():
+    """Lazy-initialise OpenAI client (only once)."""
+    global _openai_client
+    if _openai_client is not None:
+        return _openai_client
 
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        logger.warning("GEMINI_API_KEY not set — LLM explanations disabled, using fallback.")
+        logger.warning("OPENAI_API_KEY not set — LLM explanations disabled, using fallback.")
         return None
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel("gemini-1.5-flash")
-        logger.info("Gemini model initialised successfully.")
-        return _gemini_model
+        from openai import OpenAI
+        _openai_client = OpenAI(api_key=api_key)
+        logger.info("OpenAI client initialised successfully.")
+        return _openai_client
     except Exception as e:
-        logger.error(f"Failed to initialise Gemini model: {e}")
+        logger.error(f"Failed to initialise OpenAI client: {e}")
         return None
 
 
 # ---------------------------------------------------------------------------
-# Prompt template (exactly as specified)
+# Prompt template
 # ---------------------------------------------------------------------------
 CLINICAL_PROMPT = """You are a pharmacogenomics clinical assistant.
 Given the detected gene variants, inferred diplotype, phenotype, and predicted drug risk, generate a concise clinical explanation describing how the genetic variation affects drug metabolism, efficacy, or toxicity.
@@ -71,18 +70,26 @@ def _build_prompt(gene: str, diplotype: str, phenotype: str,
 # ---------------------------------------------------------------------------
 # LLM call
 # ---------------------------------------------------------------------------
-def _call_gemini(prompt: str) -> Optional[str]:
-    """Call Gemini and return the response text, or None on failure."""
-    model = _get_gemini_model()
-    if model is None:
+def _call_openai(prompt: str) -> Optional[str]:
+    """Call OpenAI and return the response text, or None on failure."""
+    client = _get_openai_client()
+    if client is None:
         return None
     try:
-        response = model.generate_content(prompt)
-        text = response.text.strip()
-        logger.info("Gemini explanation generated successfully.")
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a pharmacogenomics clinical assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=500,
+            temperature=0.3,
+        )
+        text = response.choices[0].message.content.strip()
+        logger.info("OpenAI explanation generated successfully.")
         return text
     except Exception as e:
-        logger.error(f"Gemini API call failed: {e}")
+        logger.error(f"OpenAI API call failed: {e}")
         return None
 
 
@@ -148,7 +155,7 @@ def generate_explanation(
     """
     Generate a clinical explanation for a drug-gene interaction.
 
-    Tries Gemini LLM first; falls back to structured template if unavailable.
+    Tries OpenAI LLM first; falls back to structured template if unavailable.
 
     Args:
         variants        : list of VCF variant dicts
@@ -188,7 +195,7 @@ def generate_explanation(
         variant_list=rsids,
     )
 
-    llm_response = _call_gemini(prompt)
+    llm_response = _call_openai(prompt)
     if llm_response:
         return llm_response
 
