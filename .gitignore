@@ -15,6 +15,9 @@ venv/
 # macOS
 .DS_Store
 
+# Environment / secrets
+.env
+
 # Temp files uploaded by API
 backend/temp_*
 
