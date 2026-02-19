@@ -5,14 +5,16 @@ Accepts VCF uploads + drug name(s), returns structured pharmacogenomic risk JSON
 
 from fastapi import FastAPI, UploadFile, Form, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import shutil
 import os
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
-from vcf_parser import extract_variants
-from risk_engine import predict_multi_drug, predict_risk, SUPPORTED_DRUGS
-from explanation_engine import generate_explanation
+from backend.vcf_parser import extract_variants
+from backend.risk_engine import predict_multi_drug, predict_risk, SUPPORTED_DRUGS
+from backend.explanation_engine import generate_explanation
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("PharmaGuard.API")
@@ -37,11 +39,20 @@ MAX_FILE_SIZE_MB = 5
 
 @app.get("/")
 def home():
+    """Serve the Obsidian-themed frontend."""
+    # This assumes we're running from the root or backend/ folder
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    index_path = os.path.join(base_dir, "frontend", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
     return {
-        "message": "PharmaGuard API v2.0 running",
+        "message": "PharmaGuard API v2.0 running (frontend not found)",
         "supported_drugs": SUPPORTED_DRUGS,
         "supported_genes": ["CYP2D6", "CYP2C19", "CYP2C9", "SLCO1B1", "TPMT", "DPYD"],
     }
+
+# Mount static files if needed (currently index.html is standalone)
+# app.mount("/frontend", StaticFiles(directory="../frontend"), name="frontend")
 
 
 @app.post("/analyze")
