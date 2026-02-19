@@ -983,6 +983,13 @@
                 <div class="upload-icon">📄</div>
                 <h3>Drop your VCF file here</h3>
                 <p>or click to browse &nbsp;·&nbsp; .vcf format &nbsp;·&nbsp; Max 5 MB</p>
+                <div style="margin-top:20px">
+                    <button class="btn-action"
+                        style="margin:0 auto;background:rgba(255,255,255,0.05);color:var(--obs-muted)"
+                        onclick="event.stopPropagation(); loadDemoData()">
+                        🧪 Load Demo Patient (Normal)
+                    </button>
+                </div>
             </div>
             <div class="file-pill" id="file-pill">
                 <span class="file-pill-icon">🧬</span>
@@ -1109,6 +1116,34 @@
         }
 
         // ── Helpers ──
+        const API_BASE = window.location.port === '3000' ? 'http://localhost:8000' : '';
+
+        // ── Demo Data ──
+        async function loadDemoData() {
+            setLoading(true);
+            try {
+                const response = await fetch(`${API_BASE}/sample-data/normal`);
+                if (!response.ok) throw new Error('Failed to load demo data');
+
+                const blob = await response.blob();
+                const file = new File([blob], 'demo_patient.vcf', { type: 'text/vcf' });
+
+                // Simulate file selection
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                fileInput.files = dt.files;
+                setFile(file);
+
+                // Optional: Scroll to analysis button or auto-run?
+                // For now, just let user click run.
+            } catch (e) {
+                showErr('Could not load demo data: ' + e.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // ── Helpers ──
         const riskCls = l => ({ 'Safe': 'safe', 'Adjust Dosage': 'adjust', 'Toxic': 'toxic', 'Ineffective': 'ineff', 'Unknown': 'unknown' }[l] || 'unknown');
         const riskIcon = l => ({ 'Safe': '✅', 'Adjust Dosage': '⚠️', 'Toxic': '🚨', 'Ineffective': '⛔', 'Unknown': '❓' }[l] || '❓');
         const drugIco = n => ({ codeine: '💊', warfarin: '🩸', clopidogrel: '❤️', simvastatin: '🫀', azathioprine: '🛡️', fluorouracil: '⚗️' }[n.toLowerCase()] || '💊');
@@ -1145,7 +1180,7 @@
             fd.append('drugs', drugs.join(','));
 
             try {
-                const r = await fetch('/analyze/multi', { method: 'POST', body: fd });
+                const r = await fetch(`${API_BASE}/analyze/multi`, { method: 'POST', body: fd });
                 if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Server error' })); throw new Error(e.detail || `HTTP ${r.status}`); }
                 render(await r.json());
             } catch (e) {

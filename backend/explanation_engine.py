@@ -77,7 +77,8 @@ def _call_gemini(prompt: str) -> Optional[str]:
         return None
     try:
         import google.generativeai as genai
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # Using gemini-2.0-flash-lite-001 which may have better availability
+        model = genai.GenerativeModel("gemini-2.0-flash-lite-001")
         response = model.generate_content(prompt)
         text = response.text.strip()
         logger.info("Gemini explanation generated successfully.")

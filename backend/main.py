@@ -10,6 +10,10 @@ from fastapi.responses import FileResponse
 import shutil
 import os
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file
+
 from datetime import datetime, timezone
 from typing import List, Optional
 from backend.vcf_parser import extract_variants
@@ -24,6 +28,14 @@ app = FastAPI(
     description="Pharmacogenomic risk prediction aligned with CPIC guidelines.",
     version="2.0.0",
 )
+
+@app.get("/sample-data/normal")
+def get_sample_vcf():
+    """Returns the sample VCF file for demonstration purposes."""
+    file_path = "sample_vcf/TC_P1_PATIENT_001_Normal.vcf"
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Sample file not found")
+    return FileResponse(file_path, media_type="text/vcf", filename="demo_patient.vcf")
 
 app.add_middleware(
     CORSMiddleware,
