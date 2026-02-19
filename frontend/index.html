@@ -61,6 +61,47 @@
             --radius-sm: 8px;
         }
 
+        /* ─── Sky Blue Light Theme ─────────────────────── */
+        [data-theme="light"] {
+            --obs-void: #f0f9ff;
+            /* deepest bg (pale sky) */
+            --obs-base: #e0f2fe;
+            /* main bg (light sky) */
+            --obs-surface: #ffffff;
+            /* card bg (white) */
+            --obs-raised: #f1f5f9;
+            /* elevated (slate-50) */
+            --obs-overlay: #e2e8f0;
+            /* hover states */
+            --obs-border: #bae6fd;
+            /* border (sky-200) */
+            --obs-line: #e0f2fe;
+            /* dividers */
+
+            --obs-purple: #0284c7;
+            /* primary accent (sky-600) */
+            --obs-violet: #0ea5e9;
+            /* secondary (sky-500) */
+            --obs-lavender: #0369a1;
+            /* text accent (sky-700) */
+            --obs-accent: #0c4a6e;
+            /* darker accent (sky-900) */
+
+            --obs-text: #0f172a;
+            /* main text (slate-900) */
+            --obs-muted: #475569;
+            /* muted text (slate-600) */
+            --obs-dim: #94a3b8;
+            /* dim text (slate-400) */
+
+            /* Adjust risk colors for light bg */
+            --safe-bg: rgba(52, 211, 153, 0.25);
+            --warn-bg: rgba(251, 191, 36, 0.25);
+            --toxic-bg: rgba(248, 113, 113, 0.25);
+            --ineff-bg: rgba(167, 139, 250, 0.25);
+            --unknown-bg: rgba(107, 114, 128, 0.20);
+        }
+
         html {
             scroll-behavior: smooth;
         }
@@ -156,6 +197,30 @@
             border-radius: 20px;
             letter-spacing: 0.8px;
             text-transform: uppercase;
+        }
+
+        .theme-toggle {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--obs-line);
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1.1rem;
+            margin-left: 12px;
+            transition: all 0.2s;
+        }
+
+        [data-theme="light"] .theme-toggle {
+            background: rgba(0, 0, 0, 0.05);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
         }
 
         /* ─── Hero ─── */
@@ -955,7 +1020,12 @@
             <div class="logo-gem">🧬</div>
             PharmaGuard
         </div>
-        <span class="nav-pill">CPIC · PGx</span>
+        <div style="display:flex;align-items:center">
+            <span class="nav-pill">CPIC · PGx</span>
+            <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Toggle Theme">
+                🌙
+            </button>
+        </div>
     </nav>
 
     <!-- ── Hero ── -->
@@ -1313,6 +1383,34 @@
                 .then(() => alert('JSON copied to clipboard!'))
                 .catch(e => alert('Failed to copy JSON'));
         }
+
+        // ── Theme Toggle ──
+        function toggleTheme() {
+            const html = document.documentElement;
+            const btn = document.getElementById('theme-btn');
+            const current = html.getAttribute('data-theme');
+
+            if (current === 'light') {
+                html.removeAttribute('data-theme');
+                btn.textContent = '🌙';
+                localStorage.setItem('theme', 'dark');
+            } else {
+                html.setAttribute('data-theme', 'light');
+                btn.textContent = '☀️';
+                localStorage.setItem('theme', 'light');
+            }
+        }
+
+        // Init theme
+        (function () {
+            const saved = localStorage.getItem('theme');
+            if (saved === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+                document.addEventListener('DOMContentLoaded', () => {
+                    document.getElementById('theme-btn').textContent = '☀️';
+                });
+            }
+        })();
     </script>
 
 </body>
