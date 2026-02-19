@@ -857,7 +857,35 @@
             content: '';
             flex: 1;
             height: 1px;
+            height: 1px;
             background: var(--obs-line);
+        }
+
+        /* ─── Action Buttons ─── */
+        .action-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 24px;
+        }
+
+        .btn-action {
+            padding: 8px 14px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--obs-lavender);
+            background: rgba(124, 58, 237, 0.1);
+            border: 1px solid rgba(124, 58, 237, 0.2);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-action:hover {
+            background: rgba(124, 58, 237, 0.2);
+            border-color: rgba(124, 58, 237, 0.4);
         }
 
         /* ─── Footer ─── */
@@ -982,6 +1010,35 @@
                 <div class="drug-chip"><input type="checkbox" id="d-fluorouracil" value="fluorouracil" checked /><label
                         for="d-fluorouracil"><span class="dot"></span>Fluorouracil</label></div>
             </div>
+
+            <div class="input-row" style="margin-top: 18px; display: flex; gap: 10px;">
+                <select id="drug-select" class="obs-input" style="flex: 1;">
+                    <option value="">Select supported drug...</option>
+                    <option value="codeine">Codeine</option>
+                    <option value="warfarin">Warfarin</option>
+                    <option value="clopidogrel">Clopidogrel</option>
+                    <option value="simvastatin">Simvastatin</option>
+                    <option value="azathioprine">Azathioprine</option>
+                    <option value="fluorouracil">Fluorouracil</option>
+                </select>
+                <input type="text" id="drug-text" class="obs-input" style="flex: 2;"
+                    placeholder="Or type drug name..." />
+            </div>
+            <style>
+                .obs-input {
+                    background: var(--obs-base);
+                    border: 1px solid var(--obs-line);
+                    color: var(--obs-text);
+                    padding: 10px 14px;
+                    border-radius: var(--radius-sm);
+                    font-size: 0.9rem;
+                    outline: none;
+                }
+
+                .obs-input:focus {
+                    border-color: var(--obs-violet);
+                }
+            </style>
         </div>
 
         <!-- Analyse -->
@@ -1006,6 +1063,12 @@
                 <div class="results-title">Drug Risk Overview</div>
                 <div class="results-ts" id="rts"></div>
             </div>
+
+            <div class="action-row">
+                <button class="btn-action" onclick="downloadJson()">⬇️ Download Report JSON</button>
+                <button class="btn-action" onclick="copyJson()">📋 Copy JSON</button>
+            </div>
+
             <div id="drug-reports"></div>
 
             <div class="section-head">🧬 Genomic Summary</div>
@@ -1056,8 +1119,21 @@
         async function runAnalysis() {
             const file = fileInput.files[0];
             if (!file) { showErr('Please select a VCF file first.'); return; }
-            const drugs = [...document.querySelectorAll('.drug-chip input:checked')].map(i => i.value);
-            if (!drugs.length) { showErr('Please select at least one drug.'); return; }
+            if (!file) { showErr('Please select a VCF file first.'); return; }
+
+            // Collect drugs from chips, dropdown, and text box
+            const checkedDrugs = [...document.querySelectorAll('.drug-chip input:checked')].map(i => i.value);
+            const selectedDrug = document.getElementById('drug-select').value;
+            const textDrug = document.getElementById('drug-text').value.trim();
+
+            // Combine and unique
+            const drugSet = new Set(checkedDrugs);
+            if (selectedDrug) drugSet.add(selectedDrug);
+            if (textDrug) textDrug.split(',').forEach(d => drugSet.add(d.trim()));
+
+            const drugs = Array.from(drugSet).filter(d => d);
+
+            if (!drugs.length) { showErr('Please select or enter at least one drug.'); return; }
 
             clearErr();
             setLoading(true);
@@ -1098,10 +1174,11 @@
                 const id = `rc-${i}`;
                 const vars = r.pharmacogenomic_profile.detected_variants;
                 const varHtml = vars.length
-                    ? vars.map(v => `<span class="var-chip">${v}</span>`).join('')
+                    ? vars.map(v => `<span class="var-chip">${v.rsid}</span>`).join('')
                     : `<span style="color:var(--obs-muted);font-size:.8rem">No pathogenic variants detected</span>`;
-                const aiHtml = r.llm_explanation
-                    ? `<div class="ai-box"><div class="ai-lbl">🤖 AI Clinical Explanation</div><p>${r.llm_explanation}</p></div>` : '';
+                const ai_text = r.llm_generated_explanation?.summary || "";
+                const aiHtml = ai_text
+                    ? `<div class="ai-box"><div class="ai-lbl">🤖 AI Clinical Explanation</div><p>${ai_text}</p></div>` : '';
 
                 rEl.insertAdjacentHTML('beforeend', `
         <div class="rpt-card fade-up ${i === 0 ? 'open' : ''}" id="${id}" style="animation-delay:${i * 0.07}s">
@@ -1110,7 +1187,7 @@
               <div class="drug-ico">${drugIco(r.drug)}</div>
               <div>
                 <div class="drug-label">${r.drug}</div>
-                <div class="drug-sub">Gene: ${r.pharmacogenomic_profile.gene} · ${r.pharmacogenomic_profile.phenotype}</div>
+                <div class="drug-sub">Gene: ${r.pharmacogenomic_profile.primary_gene} · ${r.pharmacogenomic_profile.phenotype}</div>
               </div>
             </div>
             <div class="rpt-right">
@@ -1169,9 +1246,37 @@
       <div class="q-box"><div class="q-num">${qm.vcf_parsing_success ? '✓' : '✗'}</div><div class="q-lbl">VCF Parsed</div></div>
       <div class="q-box"><div class="q-num">${(data.drug_reports || []).length}</div><div class="q-lbl">Drugs Analysed</div></div>`;
 
-            const r = document.getElementById('results');
-            r.classList.add('show');
-            r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const r_el = document.getElementById('results');
+            r_el.classList.add('show');
+            r_el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            // Store data for download
+            window.lastReport = data;
+        }
+
+        function downloadJson() {
+            if (!window.lastReport) return;
+            // Create compliant output structure (unwrapped individual report or array)
+            // Prompt implies single report structure. Let's export the array of reports.
+            // Requirement says "Your application MUST generate structured JSON output matching this EXACT schema".
+            // Since we can have multiple drugs, we export what we have.
+            const exportData = window.lastReport.drug_reports;
+
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pharmaguard_report_${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function copyJson() {
+            if (!window.lastReport) return;
+            const exportData = window.lastReport.drug_reports;
+            navigator.clipboard.writeText(JSON.stringify(exportData, null, 2))
+                .then(() => alert('JSON copied to clipboard!'))
+                .catch(e => alert('Failed to copy JSON'));
         }
     </script>
 

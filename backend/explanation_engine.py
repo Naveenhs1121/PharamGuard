@@ -1,6 +1,6 @@
 """
 PharmaGuard — LLM Explanation Engine
-Generates clinical explanations using OpenAI (primary)
+Generates clinical explanations using Google Gemini (primary)
 with a structured template fallback if LLM is unavailable.
 """
 
@@ -11,29 +11,30 @@ from typing import Dict, List, Any, Optional
 logger = logging.getLogger("PharmaGuard.ExplanationEngine")
 
 # ---------------------------------------------------------------------------
-# LLM setup — OpenAI
+# LLM setup — Google Gemini
 # ---------------------------------------------------------------------------
-_openai_client = None
+_gemini_configured = False
 
-def _get_openai_client():
-    """Lazy-initialise OpenAI client (only once)."""
-    global _openai_client
-    if _openai_client is not None:
-        return _openai_client
+def _configure_gemini():
+    """Lazy-initialise Gemini client (only once)."""
+    global _gemini_configured
+    if _gemini_configured:
+        return True
 
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        logger.warning("OPENAI_API_KEY not set — LLM explanations disabled, using fallback.")
-        return None
+        logger.warning("GEMINI_API_KEY not set — LLM explanations disabled, using fallback.")
+        return False
 
     try:
-        from openai import OpenAI
-        _openai_client = OpenAI(api_key=api_key)
-        logger.info("OpenAI client initialised successfully.")
-        return _openai_client
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        _gemini_configured = True
+        logger.info("Google Gemini client configured successfully.")
+        return True
     except Exception as e:
-        logger.error(f"Failed to initialise OpenAI client: {e}")
-        return None
+        logger.error(f"Failed to configure Gemini client: {e}")
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -70,26 +71,19 @@ def _build_prompt(gene: str, diplotype: str, phenotype: str,
 # ---------------------------------------------------------------------------
 # LLM call
 # ---------------------------------------------------------------------------
-def _call_openai(prompt: str) -> Optional[str]:
-    """Call OpenAI and return the response text, or None on failure."""
-    client = _get_openai_client()
-    if client is None:
+def _call_gemini(prompt: str) -> Optional[str]:
+    """Call Gemini and return the response text, or None on failure."""
+    if not _configure_gemini():
         return None
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a pharmacogenomics clinical assistant."},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=500,
-            temperature=0.3,
-        )
-        text = response.choices[0].message.content.strip()
-        logger.info("OpenAI explanation generated successfully.")
+        import google.generativeai as genai
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+        logger.info("Gemini explanation generated successfully.")
         return text
     except Exception as e:
-        logger.error(f"OpenAI API call failed: {e}")
+        logger.error(f"Gemini API call failed: {e}")
         return None
 
 
@@ -155,7 +149,7 @@ def generate_explanation(
     """
     Generate a clinical explanation for a drug-gene interaction.
 
-    Tries OpenAI LLM first; falls back to structured template if unavailable.
+    Tries Gemini LLM first; falls back to structured template if unavailable.
 
     Args:
         variants        : list of VCF variant dicts
@@ -195,7 +189,7 @@ def generate_explanation(
         variant_list=rsids,
     )
 
-    llm_response = _call_openai(prompt)
+    llm_response = _call_gemini(prompt)
     if llm_response:
         return llm_response
 

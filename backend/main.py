@@ -141,21 +141,22 @@ async def _run_analysis(file: UploadFile, drugs: List[str]):
         gene_data = multi_result["gene_profiles"].get(gene, {})
 
         drug_reports.append({
+            "patient_id": "PATIENT_DEMO",
             "drug": drug_name,
             "timestamp": timestamp,
 
             "risk_assessment": {
                 "risk_label":       drug_result["risk_label"],
-                "severity":         drug_result["severity"],
                 "confidence_score": drug_result["confidence_score"],
+                "severity":         drug_result["severity"],
                 "evidence_strength": drug_result["evidence_strength"],
             },
 
             "pharmacogenomic_profile": {
-                "gene":               gene,
+                "primary_gene":       gene,
                 "diplotype":          gene_data.get("diplotype", "Unknown"),
                 "phenotype":          drug_result["phenotype"],
-                "detected_variants":  gene_data.get("detected_rsids", []),
+                "detected_variants":  gene_data.get("annotated_variants", []),
                 "activity_score":     gene_data.get("total_activity_score", None),
             },
 
@@ -165,8 +166,19 @@ async def _run_analysis(file: UploadFile, drugs: List[str]):
                 "supporting_variants": drug_result["supporting_variants"],
             },
 
-            "reasoning": drug_result["reasoning"],
-            "llm_explanation": explanations.get(drug_name, ""),
+            "llm_generated_explanation": {
+                "summary": explanations.get(drug_name, "")
+            },
+
+            "quality_metrics": {
+                "vcf_parsing_success":  parse_success,
+                "parse_error":          parse_error,
+                "total_variants_found": len(variants),
+                "annotated_variants":   sum(
+                    len(data["detected_rsids"])
+                    for data in multi_result["gene_profiles"].values()
+                ),
+            }
         })
 
     response = {
