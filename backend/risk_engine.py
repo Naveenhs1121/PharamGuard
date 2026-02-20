@@ -40,8 +40,20 @@ INDETERMINATE = "Indeterminate"
 ACTIVITY_SCORE = {
     "LOF": 0.0,   # Loss-of-function allele
     "DEF": 0.5,   # Decreased-function allele
-    "NF":  1.0,   # Normal-function allele
+    "NF_CYP2C19": 0.5, # Normal-function on CYP2C19 specific scale
+    "NF":  1.0,   # Normal-function allele (standard)
+    "INF_CYP2C19": 1.0, # Increased-function on CYP2C19 specific scale
     "INF": 2.0,   # Increased-function allele (gene duplication / gain)
+}
+
+# Default Activity Scores (if no variants found, i.e., *1/*1)
+DEFAULT_ACTIVITY_SCORES = {
+    "CYP2D6": 2.0,
+    "CYP2C19": 1.0,  # Per user prompt: *1/*1 = 1.0
+    "CYP2C9": 2.0,
+    "SLCO1B1": 2.0,  # *1/*1 (NF/NF)
+    "TPMT": 2.0,
+    "DPYD": 2.0,
 }
 
 # ---------------------------------------------------------------------------
@@ -60,14 +72,16 @@ RSID_DATABASE: Dict[str, Dict] = {
     "rs16947":    {"gene": "CYP2D6",  "star": "*2",  "function": "NF",  "activity": 1.0, "evidence": "high"},
     "rs1135840":  {"gene": "CYP2D6",  "star": "*2",  "function": "NF",  "activity": 1.0, "evidence": "moderate"},
     "rs5030865":  {"gene": "CYP2D6",  "star": "*8",  "function": "LOF", "activity": 0.0, "evidence": "moderate"},
+    # Add *5 (Gene deletion) placeholder if RSID known, but for now rely on existing.
 
     # ── CYP2C19 ─────────────────────────────────────────────────────────────
+    # Note: Using *1=0.5 scale per prompt.
     "rs4244285":  {"gene": "CYP2C19", "star": "*2",  "function": "LOF", "activity": 0.0, "evidence": "high"},
     "rs4986893":  {"gene": "CYP2C19", "star": "*3",  "function": "LOF", "activity": 0.0, "evidence": "high"},
     "rs28399504": {"gene": "CYP2C19", "star": "*4",  "function": "LOF", "activity": 0.0, "evidence": "moderate"},
     "rs56337013": {"gene": "CYP2C19", "star": "*5",  "function": "LOF", "activity": 0.0, "evidence": "moderate"},
-    "rs12248560": {"gene": "CYP2C19", "star": "*17", "function": "INF", "activity": 1.5, "evidence": "high"},
-    "rs41291556": {"gene": "CYP2C19", "star": "*17", "function": "INF", "activity": 1.5, "evidence": "moderate"},
+    "rs12248560": {"gene": "CYP2C19", "star": "*17", "function": "INF", "activity": 1.0, "evidence": "high"},
+    "rs41291556": {"gene": "CYP2C19", "star": "*17", "function": "INF", "activity": 1.0, "evidence": "moderate"},
 
     # ── CYP2C9 ──────────────────────────────────────────────────────────────
     "rs1799853":  {"gene": "CYP2C9",  "star": "*2",  "function": "DEF", "activity": 0.5, "evidence": "high"},
@@ -76,11 +90,15 @@ RSID_DATABASE: Dict[str, Dict] = {
     "rs9332131":  {"gene": "CYP2C9",  "star": "*6",  "function": "LOF", "activity": 0.0, "evidence": "moderate"},
     "rs7900194":  {"gene": "CYP2C9",  "star": "*8",  "function": "DEF", "activity": 0.5, "evidence": "moderate"},
 
+    # ── VKORC1 ──────────────────────────────────────────────────────────────
+    "rs9923231":  {"gene": "VKORC1",  "star": "-1639G>A", "function": "BS", "activity": 0.0, "evidence": "high"},
+
     # ── SLCO1B1 ─────────────────────────────────────────────────────────────
-    "rs4149056":  {"gene": "SLCO1B1", "star": "*5",  "function": "DEF", "activity": 0.5, "evidence": "high"},
+    # Mapping *5 to 0.0 effectively makes it "Poor Function" contribution relative to *1 (Normal=1.0)
+    "rs4149056":  {"gene": "SLCO1B1", "star": "*5",  "function": "LOF", "activity": 0.0, "evidence": "high"},
     "rs2306283":  {"gene": "SLCO1B1", "star": "*1B", "function": "NF",  "activity": 1.0, "evidence": "moderate"},
-    "rs11045819": {"gene": "SLCO1B1", "star": "*15", "function": "DEF", "activity": 0.5, "evidence": "moderate"},
-    "rs4363657":  {"gene": "SLCO1B1", "star": "*5",  "function": "DEF", "activity": 0.5, "evidence": "high"},
+    "rs11045819": {"gene": "SLCO1B1", "star": "*15", "function": "LOF", "activity": 0.0, "evidence": "moderate"},
+    "rs4363657":  {"gene": "SLCO1B1", "star": "*5",  "function": "LOF", "activity": 0.0, "evidence": "high"},
 
     # ── TPMT ────────────────────────────────────────────────────────────────
     "rs1142345":  {"gene": "TPMT",    "star": "*3C", "function": "LOF", "activity": 0.0, "evidence": "high"},
@@ -104,280 +122,251 @@ GENE_PHENOTYPE_RULES: Dict[str, List] = {
         (0.0, 0.01, PM),
         (0.01, 1.25, IM),
         (1.25, 2.25, NM),
-        (2.25, 3.0,  RM),
-        (3.0,  99.0, URM),
+        (2.25, 99.0, URM),
     ],
     "CYP2C19": [
         (0.0, 0.01, PM),
-        (0.01, 1.25, IM),
-        (1.25, 2.25, NM),
-        (2.25, 3.0,  RM),
-        (3.0,  99.0, URM),
+        (0.01, 0.9, IM),   # Target 0.5
+        (0.9, 1.25, NM),   # Target 1.0
+        (1.25, 1.75, RM),  # Target 1.5
+        (1.75, 99.0, URM), # Target 2.0+
     ],
     "CYP2C9": [
         (0.0, 0.01, PM),
-        (0.01, 1.25, IM),
-        (1.25, 99.0, NM),
+        (0.01, 1.5, IM),   # Target 0.5 - 1.0 (Strictly < 2.0)
+        (1.5, 99.0, NM),   # Target 2.0
     ],
     "SLCO1B1": [
-        # For SLCO1B1: activity score maps to transporter function
-        (0.0, 0.3,  PM),    # Poor function → high myopathy risk
-        (0.3, 0.9,  IM),    # Decreased function
-        (0.9, 99.0, NM),    # Normal function
+        (0.0, 0.5, "Poor Function"),     # 0 alleles (*5/*5 = 0)
+        (0.5, 1.5, "Decreased Function"), # 1 allele (*1/*5 = 1)
+        (1.5, 99.0, "Normal Function"),   # 2 alleles (*1/*1 = 2)
     ],
     "TPMT": [
-        (0.0, 0.01, PM),
-        (0.01, 1.25, IM),
-        (1.25, 99.0, NM),
+        (0.0, 0.5, PM),
+        (0.5, 1.5, IM),
+        (1.5, 99.0, NM),
     ],
     "DPYD": [
-        (0.0, 0.01, PM),
-        (0.01, 0.9,  IM),
-        (0.9, 99.0, NM),
+        (0.0, 0.5, PM),
+        (0.5, 1.75, IM),
+        (1.75, 99.0, NM),
     ],
 }
 
 # ---------------------------------------------------------------------------
 # CPIC Drug–Phenotype Rules
-# Structure:
-#   drug → gene → phenotype → {label, severity, confidence_base,
-#                               clinical_action, cpic_guideline}
-#
-# Risk labels (hackathon spec): Safe | Adjust Dosage | Toxic | Ineffective | Unknown
 # ---------------------------------------------------------------------------
 DRUG_RULES: Dict[str, Dict[str, Dict[str, Dict]]] = {
+    # ── CYP2D6 Drugs ────────────────────────────────────────────────────────
     "codeine": {
         "CYP2D6": {
-            PM: {
-                "label": "Ineffective",
-                "severity": "high",
-                "confidence_base": 0.95,
-                "clinical_action": (
-                    "Avoid codeine. CYP2D6 Poor Metabolizers cannot convert codeine "
-                    "to morphine, resulting in no analgesia. Use a non-opioid analgesic "
-                    "or a non-CYP2D6-metabolised opioid (e.g., morphine, oxycodone)."
-                ),
-                "cpic_guideline": "CPIC Codeine Guideline (2021) — PMID 22585173",
-            },
-            IM: {
-                "label": "Adjust Dosage",
-                "severity": "moderate",
-                "confidence_base": 0.80,
-                "clinical_action": (
-                    "Use codeine with caution. Intermediate Metabolizers produce "
-                    "reduced morphine levels. Consider a lower dose or an alternative analgesic."
-                ),
-                "cpic_guideline": "CPIC Codeine Guideline (2021) — PMID 22585173",
-            },
-            NM: {
-                "label": "Safe",
-                "severity": "none",
-                "confidence_base": 0.90,
-                "clinical_action": "Standard codeine dosing as per label.",
-                "cpic_guideline": "CPIC Codeine Guideline (2021)",
-            },
-            RM: {
-                "label": "Safe",
-                "severity": "low",
-                "confidence_base": 0.85,
-                "clinical_action": (
-                    "Standard dosing. Slightly higher morphine conversion — monitor "
-                    "for opioid side effects."
-                ),
-                "cpic_guideline": "CPIC Codeine Guideline (2021)",
-            },
-            URM: {
-                "label": "Toxic",
-                "severity": "high",
-                "confidence_base": 0.95,
-                "clinical_action": (
-                    "CONTRAINDICATED. Ultrarapid Metabolizers convert codeine to morphine "
-                    "at extremely high rates, risking life-threatening opioid toxicity. "
-                    "Use an alternative non-opioid or tramadol with caution."
-                ),
-                "cpic_guideline": "CPIC Codeine Guideline (2021) — PMID 22585173",
-            },
+            PM: {"label": "Ineffective", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Codeine (2021)", "clinical_action": "Avoid codeine. Risk of no analgesia. Use non-opioid or non-CYP2D6 opioid."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC Codeine (2021)", "clinical_action": "Use lowest effective dose with caution. Monitor for reduced efficacy."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Codeine (2021)", "clinical_action": "Standard dosing."},
+            RM: {"label": "Safe", "severity": "low", "confidence_base": 0.85, "cpic_guideline": "CPIC Codeine (2021)", "clinical_action": "Standard dosing. Monitor side effects."},
+            URM: {"label": "Toxic", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Codeine (2021)", "clinical_action": "Avoid. Risk of life-threatening toxicity (excess morphine)."},
         }
     },
-    "warfarin": {
-        "CYP2C9": {
-            PM: {
-                "label": "Adjust Dosage",
-                "severity": "high",
-                "confidence_base": 0.92,
-                "clinical_action": (
-                    "Significant warfarin dose reduction required (up to 50–80% lower). "
-                    "CYP2C9 Poor Metabolizers have severely reduced warfarin clearance. "
-                    "Start low, titrate slowly, and monitor INR closely."
-                ),
-                "cpic_guideline": "CPIC Warfarin Guideline — PMID 21900891",
-            },
-            IM: {
-                "label": "Adjust Dosage",
-                "severity": "moderate",
-                "confidence_base": 0.85,
-                "clinical_action": (
-                    "Reduce starting warfarin dose by 20–40%. Monitor INR frequently "
-                    "during initiation. CYP2C9 Intermediate Metabolizers clear warfarin "
-                    "more slowly than normal."
-                ),
-                "cpic_guideline": "CPIC Warfarin Guideline — PMID 21900891",
-            },
-            NM: {
-                "label": "Safe",
-                "severity": "none",
-                "confidence_base": 0.90,
-                "clinical_action": "Standard warfarin dosing per clinical guidelines.",
-                "cpic_guideline": "CPIC Warfarin Guideline",
-            },
+    "tramadol": {
+        "CYP2D6": {
+            PM: {"label": "Ineffective", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Tramadol (2021)", "clinical_action": "Avoid. Use alternative analgesic."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.80, "cpic_guideline": "CPIC Tramadol (2021)", "clinical_action": "Use with caution; reduced efficacy possible."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Tramadol (2021)", "clinical_action": "Standard dosing."},
+            URM: {"label": "Toxic", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Tramadol (2021)", "clinical_action": "Avoid. Risk of serious adverse events."},
         }
     },
+    "amitriptyline": {
+        "CYP2D6": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.90, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Avoid TCA or reduce dose by 50%. Consider alternative."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.80, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Consider 25% dose reduction. Monitor drug levels."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Standard dosing."},
+            URM: {"label": "Ineffective", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Avoid TCA or increase dose with monitoring."},
+        },
+        "CYP2C19": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.90, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Avoid or reduce dose by 50%. Monitor levels."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.80, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Reduce starting dose by 25%. Monitor."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Standard dosing."},
+            RM: {"label": "Ineffective", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Consider dose titration. Monitor for reduced efficacy."},
+            URM: {"label": "Ineffective", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Consider dose titration. Monitor for reduced efficacy."},
+        }
+    },
+    "nortriptyline": {
+        "CYP2D6": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.90, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Avoid TCA or reduce dose by 50%. Consider alternative."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.80, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Consider 25% dose reduction. Monitor drug levels."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Standard dosing."},
+            URM: {"label": "Ineffective", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC TCA Guideline", "clinical_action": "Avoid TCA or increase dose with monitoring."},
+        }
+    },
+    "ondansetron": {
+        "CYP2D6": {
+            PM: {"label": "Ineffective", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC Antiemetics", "clinical_action": "Use alternative antiemetic (e.g., granisetron). Standard dose may be ineffective."},
+            IM: {"label": "Adjust Dosage", "severity": "low", "confidence_base": 0.75, "cpic_guideline": "CPIC Antiemetics", "clinical_action": "Use with caution; may have reduced efficacy."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Antiemetics", "clinical_action": "Standard dosing."},
+            URM: {"label": "Safe", "severity": "none", "confidence_base": 0.80, "cpic_guideline": "CPIC Antiemetics", "clinical_action": "Standard dosing."},
+        }
+    },
+    "tamoxifen": {
+        "CYP2D6": {
+            PM: {"label": "Ineffective", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Tamoxifen", "clinical_action": "Avoid if possible. Inadequate active metabolite. Recommend alternative (e.g. aromatase inhibitor)."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC Tamoxifen", "clinical_action": "Consider higher dose (40mg/day) or alternative. Monitor endoxifen."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Tamoxifen", "clinical_action": "Standard 20 mg/day dosing."},
+            URM: {"label": "Safe", "severity": "none", "confidence_base": 0.85, "cpic_guideline": "CPIC Tamoxifen", "clinical_action": "Standard 20 mg/day dosing."},
+        }
+    },
+    "atomoxetine": {
+        "CYP2D6": {
+            PM: {"label": "Toxic", "severity": "moderate", "confidence_base": 0.90, "cpic_guideline": "CPIC Atomoxetine", "clinical_action": "Initiate at 50% of normal dose; titrate slowly. Increased exposure risk."},
+            IM: {"label": "Adjust Dosage", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC Atomoxetine", "clinical_action": "Standard starting dose with close monitoring."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Atomoxetine", "clinical_action": "Standard dosing."},
+            URM: {"label": "Ineffective", "severity": "low", "confidence_base": 0.75, "cpic_guideline": "CPIC Atomoxetine", "clinical_action": "Standard dosing (limited data)."},
+        }
+    },
+    "haloperidol": {
+        "CYP2D6": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.85, "cpic_guideline": "CPIC Antipsychotics (Level B)", "clinical_action": "Use lowest effective dose; high risk of ADRs. Consider alternatives."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.75, "cpic_guideline": "CPIC Antipsychotics", "clinical_action": "Monitor carefully; consider dose reduction."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Antipsychotics", "clinical_action": "Standard dosing."},
+            URM: {"label": "Ineffective", "severity": "moderate", "confidence_base": 0.80, "cpic_guideline": "CPIC Antipsychotics", "clinical_action": "May need higher doses; monitor for reduced efficacy."},
+        }
+    },
+
+    # ── CYP2C19 Drugs ───────────────────────────────────────────────────────
     "clopidogrel": {
         "CYP2C19": {
-            PM: {
-                "label": "Ineffective",
-                "severity": "high",
-                "confidence_base": 0.95,
-                "clinical_action": (
-                    "Avoid clopidogrel. CYP2C19 Poor Metabolizers cannot activate "
-                    "clopidogrel (prodrug), resulting in minimal antiplatelet effect and "
-                    "increased risk of cardiovascular events. Use prasugrel or ticagrelor."
-                ),
-                "cpic_guideline": "CPIC Clopidogrel Guideline — PMID 23698643",
-            },
-            IM: {
-                "label": "Adjust Dosage",
-                "severity": "moderate",
-                "confidence_base": 0.80,
-                "clinical_action": (
-                    "Consider an alternative antiplatelet agent (prasugrel or ticagrelor). "
-                    "If clopidogrel is used, higher doses may be needed — assess bleeding risk."
-                ),
-                "cpic_guideline": "CPIC Clopidogrel Guideline — PMID 23698643",
-            },
-            NM: {
-                "label": "Safe",
-                "severity": "none",
-                "confidence_base": 0.90,
-                "clinical_action": "Standard clopidogrel dosing as per label.",
-                "cpic_guideline": "CPIC Clopidogrel Guideline",
-            },
-            RM: {
-                "label": "Safe",
-                "severity": "none",
-                "confidence_base": 0.88,
-                "clinical_action": "Standard clopidogrel dosing. Slightly enhanced activation — monitor.",
-                "cpic_guideline": "CPIC Clopidogrel Guideline",
-            },
-            URM: {
-                "label": "Safe",
-                "severity": "low",
-                "confidence_base": 0.82,
-                "clinical_action": (
-                    "Standard dosing. Ultrarapid Metabolizers may have enhanced "
-                    "antiplatelet effect — monitor for bleeding."
-                ),
-                "cpic_guideline": "CPIC Clopidogrel Guideline",
-            },
+            PM: {"label": "Ineffective", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Clopidogrel", "clinical_action": "Avoid. Minimal antiplatelet effect. Use prasugrel or ticagrelor."},
+            IM: {"label": "Ineffective", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC Clopidogrel", "clinical_action": "Use with caution; consider alternative. If used, consider higher dose."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Clopidogrel", "clinical_action": "Standard 75 mg/day."},
+            RM: {"label": "Safe", "severity": "none", "confidence_base": 0.85, "cpic_guideline": "CPIC Clopidogrel", "clinical_action": "Standard dosing."},
+            URM: {"label": "Safe", "severity": "none", "confidence_base": 0.85, "cpic_guideline": "CPIC Clopidogrel", "clinical_action": "Standard dosing."},
         }
     },
+    "voriconazole": {
+        "CYP2C19": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.90, "cpic_guideline": "CPIC Voriconazole", "clinical_action": "High exposure; reduce dose and monitor levels. Risk of ADRs."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.80, "cpic_guideline": "CPIC Voriconazole", "clinical_action": "Monitor trough levels; may need dose reduction."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Voriconazole", "clinical_action": "Standard dosing with TDM."},
+            RM: {"label": "Ineffective", "severity": "high", "confidence_base": 0.90, "cpic_guideline": "CPIC Voriconazole", "clinical_action": "Significantly reduced exposure; ineffective. Use alternative antifungal."},
+            URM: {"label": "Ineffective", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Voriconazole", "clinical_action": "Significantly reduced exposure; ineffective. Use alternative antifungal."},
+        }
+    },
+    "citalopram": {
+        "CYP2C19": {
+            PM: {"label": "Toxic", "severity": "moderate", "confidence_base": 0.90, "cpic_guideline": "CPIC SSRIs", "clinical_action": "Reduce dose by 50% (max 20mg/day). Increased QT risk."},
+            IM: {"label": "Adjust Dosage", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC SSRIs", "clinical_action": "Use lowest effective dose; monitor QT."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC SSRIs", "clinical_action": "Standard dosing."},
+            RM: {"label": "Ineffective", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC SSRIs", "clinical_action": "Standard dosing (consider alternative if no response)."},
+            URM: {"label": "Ineffective", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC SSRIs", "clinical_action": "Standard dosing (consider alternative if no response)."},
+        }
+    },
+    "escitalopram": {
+        "CYP2C19": {
+            PM: {"label": "Toxic", "severity": "moderate", "confidence_base": 0.90, "cpic_guideline": "CPIC SSRIs", "clinical_action": "Reduce dose by 50% (max 10mg/day). Increased QT risk."},
+            IM: {"label": "Adjust Dosage", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC SSRIs", "clinical_action": "Use lowest effective dose; monitor QT."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC SSRIs", "clinical_action": "Standard dosing."},
+            RM: {"label": "Ineffective", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC SSRIs", "clinical_action": "Standard dosing (consider alternative if no response)."},
+            URM: {"label": "Ineffective", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC SSRIs", "clinical_action": "Standard dosing (consider alternative if no response)."},
+        }
+    },
+    "omeprazole": {
+        "CYP2C19": {
+            PM: {"label": "Toxic", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC PPIs", "clinical_action": "Initiate at 50% of standard dose. Monitor for ADRs (increased exposure)."},
+            IM: {"label": "Adjust Dosage", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC PPIs", "clinical_action": "Consider dose reduction; start at lower end."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC PPIs", "clinical_action": "Standard dosing."},
+            RM: {"label": "Ineffective", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC PPIs", "clinical_action": "Consider doubling dose for H. pylori or erosive esophagitis."},
+            URM: {"label": "Ineffective", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC PPIs", "clinical_action": "Consider doubling dose for H. pylori or erosive esophagitis."},
+        }
+    },
+
+    # ── CYP2C9 Drugs ────────────────────────────────────────────────────────
+    "warfarin": {
+        "CYP2C9": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Warfarin", "clinical_action": "Start at significantly reduced dose (~5-6 mg/week). Very slow titration. High bleeding risk. Check VKORC1."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.88, "cpic_guideline": "CPIC Warfarin", "clinical_action": "Reduce starting dose by 25-50%. Close INR monitoring. Check VKORC1 status."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Warfarin", "clinical_action": "Standard dosing. Consider VKORC1 genotype for fine-tuning."},
+        }
+    },
+    "celecoxib": {
+        "CYP2C9": {
+            PM: {"label": "Toxic", "severity": "moderate", "confidence_base": 0.90, "cpic_guideline": "CPIC NSAIDs", "clinical_action": "Reduce starting dose by 25-50%. Use lowest effective dose."},
+            IM: {"label": "Adjust Dosage", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC NSAIDs", "clinical_action": "Consider 25% dose reduction. Monitor."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC NSAIDs", "clinical_action": "Standard dosing."},
+        }
+    },
+    "phenytoin": {
+        "CYP2C9": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Phenytoin", "clinical_action": "Reduce dose by 25-50%. Monitor levels. Risk of toxicity."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC Phenytoin", "clinical_action": "Consider 25% reduction. Monitor."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Phenytoin", "clinical_action": "Standard dosing."},
+        }
+    },
+    "siponimod": {
+        "CYP2C9": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Siponimod", "clinical_action": "Contraindicated; avoid use."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.90, "cpic_guideline": "CPIC Siponimod", "clinical_action": "Use 1 mg/day maintenance (vs 2 mg)."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.95, "cpic_guideline": "CPIC Siponimod", "clinical_action": "Standard 2 mg/day."},
+        }
+    },
+
+    # ── SLCO1B1 Drugs ───────────────────────────────────────────────────────
     "simvastatin": {
         "SLCO1B1": {
-            PM: {
-                "label": "Toxic",
-                "severity": "high",
-                "confidence_base": 0.92,
-                "clinical_action": (
-                    "High risk of simvastatin-induced myopathy (including rhabdomyolysis). "
-                    "SLCO1B1 Poor Function severely impairs hepatic uptake, increasing plasma "
-                    "simvastatin levels. Switch to pravastatin or rosuvastatin (less SLCO1B1-dependent)."
-                ),
-                "cpic_guideline": "CPIC Simvastatin Guideline — PMID 22617227",
-            },
-            IM: {
-                "label": "Adjust Dosage",
-                "severity": "moderate",
-                "confidence_base": 0.82,
-                "clinical_action": (
-                    "Prescribe a lower simvastatin dose (≤20 mg/day) or switch to an "
-                    "alternative statin (pravastatin, fluvastatin, or rosuvastatin). "
-                    "Monitor for muscle pain or weakness."
-                ),
-                "cpic_guideline": "CPIC Simvastatin Guideline — PMID 22617227",
-            },
-            NM: {
-                "label": "Safe",
-                "severity": "none",
-                "confidence_base": 0.90,
-                "clinical_action": "Standard simvastatin dosing as per label.",
-                "cpic_guideline": "CPIC Simvastatin Guideline",
-            },
+            "Poor Function": {"label": "Toxic", "severity": "high", "confidence_base": 0.95, "cpic_guideline": "CPIC Statins", "clinical_action": "Avoid. High myopathy risk. Use alternative (rosuvastatin, pravastatin)."},
+            "Decreased Function": {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC Statins", "clinical_action": "Use max 20 mg/day. If higher needed, use alternative."},
+            "Normal Function": {"label": "Safe", "severity": "none", "confidence_base": 0.95, "cpic_guideline": "CPIC Statins", "clinical_action": "Standard dosing (max 40 mg/day)."},
         }
     },
+    "atorvastatin": {
+        "SLCO1B1": {
+            "Poor Function": {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC Statins", "clinical_action": "Avoid or use lowest possible dose. Use alternative."},
+            "Decreased Function": {"label": "Safe", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC Statins", "clinical_action": "Use max 40 mg/day. Monitor for myopathy."},
+            "Normal Function": {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Statins", "clinical_action": "Standard dosing."},
+        }
+    },
+    "rosuvastatin": {
+        "SLCO1B1": {
+            "Poor Function": {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.85, "cpic_guideline": "CPIC Statins", "clinical_action": "Avoid or use max 20 mg/day. Use alternative."},
+            "Decreased Function": {"label": "Safe", "severity": "low", "confidence_base": 0.80, "cpic_guideline": "CPIC Statins", "clinical_action": "Use max 20 mg/day."},
+            "Normal Function": {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Statins", "clinical_action": "Standard dosing."},
+        }
+    },
+
+    # ── TPMT Drugs ──────────────────────────────────────────────────────────
     "azathioprine": {
         "TPMT": {
-            PM: {
-                "label": "Toxic",
-                "severity": "high",
-                "confidence_base": 0.97,
-                "clinical_action": (
-                    "TPMT Poor Metabolizers accumulate toxic thioguanine nucleotides, "
-                    "causing life-threatening myelosuppression. Reduce dose by 90% or "
-                    "switch to an alternative immunosuppressant. Increase monitoring frequency."
-                ),
-                "cpic_guideline": "CPIC Thiopurines Guideline — PMID 21270794",
-            },
-            IM: {
-                "label": "Adjust Dosage",
-                "severity": "moderate",
-                "confidence_base": 0.88,
-                "clinical_action": (
-                    "Reduce azathioprine starting dose by 30–70% of standard dose. "
-                    "Monitor CBC frequently during therapy. Consider testing NUDT15 as well."
-                ),
-                "cpic_guideline": "CPIC Thiopurines Guideline — PMID 21270794",
-            },
-            NM: {
-                "label": "Safe",
-                "severity": "none",
-                "confidence_base": 0.90,
-                "clinical_action": "Standard azathioprine dosing as per label. Routine CBC monitoring.",
-                "cpic_guideline": "CPIC Thiopurines Guideline",
-            },
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.98, "cpic_guideline": "CPIC Thiopurines", "clinical_action": "Reduce dose 10-fold or avoid. Risk of life-threatening myelosuppression."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.90, "cpic_guideline": "CPIC Thiopurines", "clinical_action": "Start at 30-70% full dose. Titrate based on toxicity/efficacy. Monitor CBC."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.95, "cpic_guideline": "CPIC Thiopurines", "clinical_action": "Standard dosing (2-3 mg/kg/day)."},
         }
     },
+    "mercaptopurine": {
+        "TPMT": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.98, "cpic_guideline": "CPIC Thiopurines", "clinical_action": "Reduce dose to 10% of normal. Titrate cautiously."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.90, "cpic_guideline": "CPIC Thiopurines", "clinical_action": "Start at 30-80% standard dose. Monitor CBC."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.95, "cpic_guideline": "CPIC Thiopurines", "clinical_action": "Standard dosing."},
+        }
+    },
+    "thioguanine": {
+        "TPMT": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.98, "cpic_guideline": "CPIC Thiopurines", "clinical_action": "Reduce dose to 10% of standard. Risk of fatal myelosuppression."},
+            IM: {"label": "Adjust Dosage", "severity": "moderate", "confidence_base": 0.90, "cpic_guideline": "CPIC Thiopurines", "clinical_action": "Start at 30-50% of normal dose."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.95, "cpic_guideline": "CPIC Thiopurines", "clinical_action": "Standard dosing."},
+        }
+    },
+
+    # ── DPYD Drugs ──────────────────────────────────────────────────────────
     "fluorouracil": {
         "DPYD": {
-            PM: {
-                "label": "Toxic",
-                "severity": "high",
-                "confidence_base": 0.97,
-                "clinical_action": (
-                    "DPYD Poor Metabolizers cannot adequately catabolize fluorouracil, "
-                    "leading to severe, life-threatening toxicity (mucositis, neutropenia, "
-                    "neurotoxicity). Do NOT use standard doses. Consider alternative "
-                    "fluoropyrimidine therapy or reduce dose by ≥50% with close monitoring."
-                ),
-                "cpic_guideline": "CPIC Fluoropyrimidines Guideline — PMID 23988873",
-            },
-            IM: {
-                "label": "Adjust Dosage",
-                "severity": "moderate",
-                "confidence_base": 0.88,
-                "clinical_action": (
-                    "Reduce fluorouracil starting dose by 50%. Increase toxicity monitoring. "
-                    "DPYD Intermediate Metabolizers have reduced drug clearance — standard doses "
-                    "may cause significant adverse events."
-                ),
-                "cpic_guideline": "CPIC Fluoropyrimidines Guideline — PMID 23988873",
-            },
-            NM: {
-                "label": "Safe",
-                "severity": "none",
-                "confidence_base": 0.90,
-                "clinical_action": "Standard fluorouracil dosing as per protocol.",
-                "cpic_guideline": "CPIC Fluoropyrimidines Guideline",
-            },
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.98, "cpic_guideline": "CPIC Fluoropyrimidines", "clinical_action": "Avoid. Fatal toxicity risk. If no alt, use extreme caution."},
+            IM: {"label": "Adjust Dosage", "severity": "high", "confidence_base": 0.90, "cpic_guideline": "CPIC Fluoropyrimidines", "clinical_action": "Reduce starting dose by 50%. Monitor closely."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Fluoropyrimidines", "clinical_action": "Standard dosing."},
+        }
+    },
+    "capecitabine": {
+        "DPYD": {
+            PM: {"label": "Toxic", "severity": "high", "confidence_base": 0.98, "cpic_guideline": "CPIC Fluoropyrimidines", "clinical_action": "Avoid. Fatal toxicity risk."},
+            IM: {"label": "Adjust Dosage", "severity": "high", "confidence_base": 0.90, "cpic_guideline": "CPIC Fluoropyrimidines", "clinical_action": "Reduce starting dose by 50%. Monitor closely."},
+            NM: {"label": "Safe", "severity": "none", "confidence_base": 0.90, "cpic_guideline": "CPIC Fluoropyrimidines", "clinical_action": "Standard dosing."},
         }
     },
 }
@@ -557,40 +546,99 @@ def _compute_confidence(
 def analyse_gene(gene: str, variants: List[Dict]) -> GeneResult:
     """
     Analyse all variants for a single gene.
-
-    Returns a GeneResult with diplotype, phenotype, and reasoning.
+    Handles zygosity (Het/Hom) and infers missing alleles as Reference (*1).
     """
     logger.info(f"Analysing gene: {gene} with {len(variants)} candidate variants")
 
     gene_variants = [v for v in variants if v.get("gene") == gene]
-    annotated: List[VariantAnnotation] = []
+    detected_alleles: List[VariantAnnotation] = []
 
     for v in gene_variants:
         ann = _annotate_variant(v)
         if ann and ann.gene == gene:
-            annotated.append(ann)
-            logger.debug(f"  {gene}: matched {ann.rsid} → {ann.star_allele} ({ann.function})")
+            # Parse Genotype
+            gt = v.get("gt", "0/1") # Default to Het if missing
+            is_hom = "1/1" in gt or "1|1" in gt or "2/2" in gt # Basic check
+            
+            # Add allele instances
+            detected_alleles.append(ann) # First allele
+            if is_hom:
+                detected_alleles.append(ann) # Second allele (same)
+            
+            logger.debug(f"  {gene}: matched {ann.rsid} ({gt}) -> {ann.star_allele} (x{2 if is_hom else 1})")
         else:
             rsid = v.get("rsid", "unknown")
             logger.debug(f"  {gene}: rsID {rsid!r} not in database — skipped")
 
-    # Activity score: sum of all detected variant scores
-    # Biallelic assumption: if no LOF detected, assume *1/*1 (score = 2.0)
-    if annotated:
-        activity_score = sum(a.activity_score for a in annotated)
-    else:
-        activity_score = 2.0   # Reference (*1/*1) assumed
-
+    # Calculate Activity Score
+    # 1. Get default diplotype score (*1/*1)
+    default_diplotype_score = DEFAULT_ACTIVITY_SCORES.get(gene, 2.0)
+    ref_allele_score = default_diplotype_score / 2.0
+    
+    # 2. Determine final alleles (max 2 for diploidy)
+    # Heuristic: If >2 alleles found, take top 2 (usually severe ones). 
+    # But for now, just take first 2 or pad with Ref.
+    
+    final_alleles = []
+    
+    # Copy detected
+    for a in detected_alleles:
+        final_alleles.append(a)
+    
+    # Pad with Reference if needed (target 2 alleles)
+    # Note: We represent Reference as None or a dummy Annotation?
+    # Let's count score directly.
+    
+    activity_score = 0.0
+    
+    # Sum up detected variants (up to 2)
+    # Issue: If 3 variants? e.g. *2 and *4. 
+    # If unphased, simpler to just sum them? No, *1/*2 + *4 is impossible (3 alleles).
+    # Assume 2 slots.
+    
+    # Logic: Start with score = 0. Fill 2 slots.
+    # Slot 1: detected[0] or Ref
+    # Slot 2: detected[1] or Ref
+    
+    slots_filled = 0
+    annotated_variants_list = [] # For reporting
+    
+    # Sort detected alleles? Maybe LOF first?
+    # If we have *2 (NF) and *4 (PM) and *1 (Ref).
+    # If VCF has *2 (Het) and *4 (Het).
+    # Diplotype *2/*4.
+    # If VCF has *2 (Hom). *2/*2.
+    
+    # We use the 'detected_alleles' list which has duplicated entries for Hom.
+    # We take the first 2.
+    
+    for allele in detected_alleles[:2]:
+        activity_score += allele.activity_score
+        slots_filled += 1
+        annotated_variants_list.append(allele)
+        
+    while slots_filled < 2:
+        activity_score += ref_allele_score
+        slots_filled += 1
+        # Implicit *1
+        
     phenotype = _classify_phenotype(gene, activity_score)
-    diplotype = _build_diplotype_label(annotated, gene)
-    reasoning = _phenotype_reasoning(gene, phenotype, activity_score, annotated)
+    diplotype = _build_diplotype_label(annotated_variants_list, gene)
+    
+    # Special handling for Diplotype string to show *1 if implicit
+    if len(annotated_variants_list) == 0:
+        diplotype = f"{gene}:*1/*1" # Fully Reference
+    elif len(annotated_variants_list) == 1:
+        diplotype = f"{gene}:{annotated_variants_list[0].star_allele}/*1"
+    
+    reasoning = _phenotype_reasoning(gene, phenotype, activity_score, annotated_variants_list)
 
     logger.info(f"  {gene}: activity={activity_score:.2f}, phenotype={phenotype}, diplotype={diplotype}")
 
     return GeneResult(
         gene=gene,
-        detected_rsids=[a.rsid for a in annotated],
-        annotated_variants=annotated,
+        detected_rsids=[a.rsid for a in annotated_variants_list],
+        annotated_variants=annotated_variants_list,
         total_activity_score=activity_score,
         diplotype=diplotype,
         phenotype=phenotype,
@@ -723,8 +771,19 @@ def predict_drug_risk(drug_name: str, gene_results: Dict[str, GeneResult]) -> Dr
 
 TARGET_GENES = ["CYP2D6", "CYP2C19", "CYP2C9", "SLCO1B1", "TPMT", "DPYD"]
 SUPPORTED_DRUGS = [
-    "codeine", "warfarin", "clopidogrel",
-    "simvastatin", "azathioprine", "fluorouracil",
+    # CYP2D6
+    "codeine", "tramadol", "amitriptyline", "nortriptyline", "ondansetron",
+    "tamoxifen", "atomoxetine", "haloperidol",
+    # CYP2C19
+    "clopidogrel", "voriconazole", "citalopram", "escitalopram", "omeprazole",
+    # CYP2C9
+    "warfarin", "celecoxib", "phenytoin", "siponimod",
+    # SLCO1B1
+    "simvastatin", "atorvastatin", "rosuvastatin",
+    # TPMT
+    "azathioprine", "mercaptopurine", "thioguanine",
+    # DPYD
+    "fluorouracil", "capecitabine",
 ]
 
 
